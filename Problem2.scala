@@ -24,18 +24,21 @@ object Prob2 extends App {
       case cardCollector_take_card(card) => {
         combinedList = combinedList ::: List(card)
         numCardsCount += 1
-//        println(card)
 
         if (numCardsCount == numOfCards) {
-          println("got here 5")
 
-          if (shuffleActorRef == null) println("error")
+          if (shuffleActorRef == null) {
+            println("error creating actor")
+            system.terminate()
+          }
           shuffleActorRef ! shuffler_take_deck(combinedList)
+          /* reset the value */
+          combinedList = Nil
+          numCardsCount = 0
         }
       }
 
       case cardCollector_take_shufflerName_numCards(shuffleActor, numCards) => {
-        println("got here 2")
         numOfCards = numCards
         shuffleActorRef = shuffleActor
       }
@@ -72,22 +75,28 @@ object Prob2 extends App {
       }
 
       case faroShuffler_take_deck(deck) => {
-        println("got here 1")
         if (l1.isEmpty) l1 = deck
         else if (l2.isEmpty) l2 = deck
 
 
         if (!l1.isEmpty && !l2.isEmpty) {
-//          println(l1)
-//          println(l2)
           cardCollectorActor ! cardCollector_take_shufflerName_numCards(shuffleActorRef, l1.length + l2.length)
 
-          for( a <- 0 until l1.length){
-//            combinedList = combinedList ::: List(l1(a))
-//            combinedList = combinedList ::: List(l2(a))
-            cardCollectorActor ! cardCollector_take_card(l1(a))
-            cardCollectorActor ! cardCollector_take_card(l2(a))
+          if (shuffleTypeRef == true) {
+            for( a <- 0 until l1.length){
+              cardCollectorActor ! cardCollector_take_card(l1(a))
+              cardCollectorActor ! cardCollector_take_card(l2(a))
+            }
+          } else {
+            for( a <- 0 until l1.length){
+              cardCollectorActor ! cardCollector_take_card(l2(a))
+              cardCollectorActor ! cardCollector_take_card(l1(a))
+            }
           }
+          /* reset the values */
+          l1 = Nil
+          l2 = Nil
+          combinedList = Nil
         }
       }
     }
@@ -99,22 +108,30 @@ object Prob2 extends App {
     val splitter = system.actorOf(Props[Splitter], "Splitter")
     val faroShuffler = system.actorOf(Props[FaroShuffler], "FaroShuffler")
     var requester: ActorRef = null
-    var maxShuffleCount = -1
+    var maxShuffleNum = -1
+    var shuffleCount = 0
+    var shuffleTypeRef = false
 
     def receive: PartialFunction[Any, Unit] = {
       case shuffler_take_deck_shuffleNum_shuffleType_shuffleActor(deck, shuffleNum, shuffleType, shuffleActor, requesterActor)=> {
         shuffleActorRef = shuffleActor
-        maxShuffleCount = shuffleNum
+        maxShuffleNum = shuffleNum
+        shuffleTypeRef = shuffleType
         splitter ! take_deck_faroShufflerActor(deck, faroShuffler)
         faroShuffler ! take_shuffleType_shuffleActor(shuffleType, shuffleActorRef)
         requester = requesterActor
-        maxShuffleCount = shuffleNum
       }
 
       case shuffler_take_deck(deck) => {
-        println(deck)
+//        println(deck)
+        shuffleCount += 1
 
-        requester ! requester_take_deck(deck)
+        if (shuffleCount < maxShuffleNum) {
+          splitter ! take_deck_faroShufflerActor(deck, faroShuffler)
+          faroShuffler ! take_shuffleType_shuffleActor(shuffleTypeRef, shuffleActorRef)
+        } else {
+          requester ! requester_take_deck(deck)
+        }
       }
     }
   }
@@ -129,7 +146,6 @@ object Prob2 extends App {
       }
 
       case requester_take_deck(deck) => {
-        println("got here")
         println(deck)
         system.terminate()
       }
@@ -138,6 +154,8 @@ object Prob2 extends App {
 
   val system = ActorSystem("ActorShuffling")
   val requester = system.actorOf(Props[Requester], "requester")
-  var l1 = List(1, 2, 3, 4)
-  requester ! take_deck_shuffleNum_shuffleType(l1, 1, true, requester)
+  var l1 = List(1, 2, 3, 4, 5, 6)
+  /* Change input here to test different values */
+  requester ! take_deck_shuffleNum_shuffleType(l1, 3, true, requester)
+//  requester ! take_deck_shuffleNum_shuffleType(l1, 3, false, requester)
 }
